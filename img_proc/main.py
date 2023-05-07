@@ -15,7 +15,7 @@ import numpy as np
 data_pth = "/home/mohit/NYU/Big_Data/Homework/forest-fire-tracker/data"
 m,n = 24,24
 x_dim, y_dim = 256, 256
-timestamp = 10
+timestamp = 153
 location = m*n # 24*24 locations
 
 

@@ -5,7 +5,7 @@ import os
 import sys
 import math
 
-def get_center(im, radius=5, save_path=None):
+def get_center(im, radius=10, save_path=None):
     hsv = cv2.cvtColor(im, cv2.COLOR_BGR2HSV)
     th, bw = cv2.threshold(hsv[:, :, 2], 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
@@ -131,6 +131,7 @@ def get_color_centers(im, centers):
     for center in centers:
         dist = []
         states = {
+        0: np.array([255, 255, 255]),  # nothing
         1: np.array([0, 255, 0]),  # "alive",
         2: np.array([0, 255, 255]),  # "heating",
         3: np.array([0, 0, 255]),  # "burning",
@@ -139,15 +140,18 @@ def get_color_centers(im, centers):
 
         pixel = im[math.ceil(center[1]),math.ceil(center[0]),:]
 
+        dist.append([np.linalg.norm(pixel - states[0])])
         dist.append([np.linalg.norm(pixel - states[1])])
         dist.append([np.linalg.norm(pixel - states[2])])
         dist.append([np.linalg.norm(pixel - states[3])])
         dist.append([np.linalg.norm(pixel - states[4])])
         
         # print(pixel, dist)
-        state = np.argmin(np.array(dist))+1
-        if state==2:
-            print(pixel, dist)
+        state = np.argmin(np.array(dist))
+        # if state==2:
+        #     cv2.imshow('img', im)
+        #     print(pixel, dist)
+        #     pass
 
         # x,y,r = center[0], center[1], center[2]
         # xm,ym = np.meshgrid(
@@ -220,7 +224,7 @@ def generate_marker(world_img, sim_centers, m, n, x_dim, y_dim):
     return world_img
 
 
-def get_contour(im, radius=5, save_path=None):
+def get_contour(im, radius=10, save_path=None):
     np.set_printoptions(threshold=sys.maxsize)
 
     hsv = cv2.cvtColor(im, cv2.COLOR_BGR2HSV)
