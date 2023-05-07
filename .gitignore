@@ -1,0 +1,7 @@
+.vscode
+__pycache__
+*.7z
+*.dmg
+*.zip
+*.xz
+data
