@@ -137,12 +137,17 @@ def get_color_centers(im, centers):
         4: np.array([0, 0, 0]),  # "dead",
         }
 
-        dist.append([np.linalg.norm(im[math.ceil(center[0]),math.ceil(center[1]),:] - states[1])])
-        dist.append([np.linalg.norm(im[math.ceil(center[0]),math.ceil(center[1]),:] - states[2])])
-        dist.append([np.linalg.norm(im[math.ceil(center[0]),math.ceil(center[1]),:] - states[3])])
-        dist.append([np.linalg.norm(im[math.ceil(center[0]),math.ceil(center[1]),:] - states[4])])
+        pixel = im[math.ceil(center[1]),math.ceil(center[0]),:]
+
+        dist.append([np.linalg.norm(pixel - states[1])])
+        dist.append([np.linalg.norm(pixel - states[2])])
+        dist.append([np.linalg.norm(pixel - states[3])])
+        dist.append([np.linalg.norm(pixel - states[4])])
         
+        # print(pixel, dist)
         state = np.argmin(np.array(dist))+1
+        if state==2:
+            print(pixel, dist)
 
         # x,y,r = center[0], center[1], center[2]
         # xm,ym = np.meshgrid(

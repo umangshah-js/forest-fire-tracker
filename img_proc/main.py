@@ -40,7 +40,7 @@ for i in tqdm(range(0, location),desc="Init Contours"):
 
     im = cv2.imread(img_path+"/0.png")
     
-    tmp_contour, tmp_centers = get_contour(im, radius=4, save_path = init_contour_path+f"{x}_{y}.npz")
+    tmp_contour, tmp_centers = get_contour(im, radius=5, save_path = init_contour_path+f"{x}_{y}.npz")
     centers.append(tmp_centers)
     contours.append(tmp_contour)
 
