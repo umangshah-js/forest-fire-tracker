@@ -47,6 +47,7 @@ for i in tqdm(range(0, location),desc="Init Contours"):
 
 for j in tqdm(range(0,timestamp),desc="Timestamp"):
     time_stmp = np.zeros((m * x_dim, n * y_dim), dtype=np.uint8)
+    time_stmp_center = []
     
     time_arr_save = f"{data_pth}/timestamps/arr"
     os.makedirs(time_arr_save, exist_ok=True)
@@ -61,16 +62,27 @@ for j in tqdm(range(0,timestamp),desc="Timestamp"):
         # os.makedirs(f"{data_pth}/contours/{x}_{y}", exist_ok=True)
         img_path = f"{data_pth}/raw/Cam_{x}_{y}"
         tmp_contour = contours[i]
-     
+        tmp_centers = centers[i]
+
         im = cv2.imread(img_path+f"/{j}.png")
 
-        contour = get_color_contour(im, tmp_contour)
-        
-        time_stmp[(m-1-x)*x_dim:(m-x)*x_dim, y*y_dim: (y+1)*y_dim] = contour
+        contour_color = get_color_contour(im, tmp_contour)
 
+        # Verfying whether there is center or not
+        if len(tmp_centers.shape)==2:
+            center_color = get_color_centers(im, tmp_centers)
+
+            # Origin shift the centers
+            center_color[:,1] = (m-x)*x_dim - center_color[:,1]
+            center_color[:,0] = y*y_dim + center_color[:,0]
+            time_stmp_center.append(center_color)
+        
+        time_stmp[(m-1-x)*x_dim:(m-x)*x_dim, y*y_dim: (y+1)*y_dim] = contour_color
+    
+    time_stmp_center = np.concatenate(time_stmp_center, axis=0)
     time_stmp_im = arr_to_image(time_stmp)
 
     # Saving the timestamp image and array
     cv2.imwrite(f"{time_im_save}/{j}.png", time_stmp_im)
-    np.save(f"{time_arr_save}/{j}.npy", time_stmp)
+    np.savez(f"{time_arr_save}/{j}.npz", contours = time_stmp, centers = time_stmp_center)
    

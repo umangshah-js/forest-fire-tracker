@@ -3,7 +3,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 import os
 import sys
-
+import math
 
 def get_center(im, radius=5, save_path=None):
     hsv = cv2.cvtColor(im, cv2.COLOR_BGR2HSV)
@@ -125,6 +125,50 @@ def get_color_contour(im, arr):
 
     return dist
 
+def get_color_centers(im, centers):
+    ans = []
+    
+    for center in centers:
+        dist = []
+        states = {
+        1: np.array([0, 255, 0]),  # "alive",
+        2: np.array([0, 255, 255]),  # "heating",
+        3: np.array([0, 0, 255]),  # "burning",
+        4: np.array([0, 0, 0]),  # "dead",
+        }
+
+        dist.append([np.linalg.norm(im[math.ceil(center[0]),math.ceil(center[1]),:] - states[1])])
+        dist.append([np.linalg.norm(im[math.ceil(center[0]),math.ceil(center[1]),:] - states[2])])
+        dist.append([np.linalg.norm(im[math.ceil(center[0]),math.ceil(center[1]),:] - states[3])])
+        dist.append([np.linalg.norm(im[math.ceil(center[0]),math.ceil(center[1]),:] - states[4])])
+        
+        state = np.argmin(np.array(dist))+1
+
+        # x,y,r = center[0], center[1], center[2]
+        # xm,ym = np.meshgrid(
+        #     np.arange(max(x-r,0),min(x+r+1,255)),
+        #     np.arange(max(y-r,0),min(y+r+1,255))
+        # )
+        # ind = np.column_stack((xm.ravel(), ym.ravel()))
+        # ind = np.ceil(ind).astype(int)
+
+        # pixels = im[ind[:,0], ind[:,1], :]
+
+        # states = {
+        # 1: np.array([0, 255, 0]),  # "alive",
+        # 2: np.array([0, 255, 255]),  # "heating",
+        # 3: np.array([0, 0, 255]),  # "burning",
+        # 4: np.array([0, 0, 0]),  # "dead",
+        # }
+
+        # dist = []
+        # for i in range(len(states)):
+        #     dist.append(np.linalg.norm(pixels-states[i], axis=1))
+
+        # state = np.argmin(np.array(dist))
+        ans.append(np.array([center[0],center[1],center[2],state]))
+
+    return np.array(ans)
 
 def get_world_img(timestamp, m, n, data_pth, x_dim, y_dim):
     # Create an array og m*x_dim, n*y_dim, 3
