@@ -210,6 +210,9 @@ def get_contour(im, radius=5, save_path=None):
 
     num = 0
     count = 0
+
+    centers = []
+
     for i in range(len(contours)):
         x, y, w, h = cv2.boundingRect(contours[i])
         _, mx, _, mxloc = cv2.minMaxLoc(
@@ -224,6 +227,9 @@ def get_contour(im, radius=5, save_path=None):
             r = mx
             xc = mxloc[0] + x
             yc = mxloc[1] + y
+
+            centers.append(np.array([xc, yc, r]))
+
             for u in range(int(max(xc - r, 0)), int(min(xc + r + 1, arr.shape[0]))):
                 for v in range(int(max(yc - r, 0)), int(min(yc + r + 1, arr.shape[1]))):
                     if (u - xc) ** 2 + (v - yc) ** 2 <= r**2:
@@ -235,8 +241,9 @@ def get_contour(im, radius=5, save_path=None):
 
     # cv2.imshow('a',im)
     # cv2.imshow('b',convert_to_image(arr))
-    np.save(save_path, arr)
-    return arr
+    centers = np.array(centers)
+    np.savez(save_path, arr=arr, centers=centers)
+    return arr, centers
 
 
 def arr_to_image(arr):
