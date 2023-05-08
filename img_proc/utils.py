@@ -4,6 +4,7 @@ import numpy as np
 import os
 import sys
 import math
+from tqdm.auto import tqdm
 
 def get_center(im, radius=10, save_path=None):
     hsv = cv2.cvtColor(im, cv2.COLOR_BGR2HSV)
@@ -71,35 +72,6 @@ def get_center(im, radius=10, save_path=None):
     return center
 
 
-def get_color_center(im, centers):
-    states = []
-
-    for center in centers:
-        pixel = im[center[0], center[1], :]
-
-        green = np.array([0, 255, 0])
-        red = np.array([255, 0, 0])
-        black = np.array([0, 0, 0])
-        yellow = np.array([255, 255, 0])
-
-        state = [
-            0,  # "alive",
-            2,  # "burning",
-            3,  # "dead",
-            1,  # "heating"
-        ]
-
-        dist = []
-        dist.append([np.linalg.norm(pixel - green)])
-        dist.append([np.linalg.norm(pixel - red)])
-        dist.append([np.linalg.norm(pixel - black)])
-        dist.append([np.linalg.norm(pixel - yellow)])
-
-        states.append(state[np.argmin(np.array(dist))])
-
-    return states
-
-
 def get_color_contour(im, arr):
     # cv2.imshow('img', im)
     im[arr == 0] = np.array([255, 255, 255])
@@ -148,6 +120,11 @@ def get_color_centers(im, centers):
         
         # print(pixel, dist)
         state = np.argmin(np.array(dist))
+        threshold = 20
+
+        if dist[state][0] > threshold:
+            state = 0
+
         # if state==2:
         #     cv2.imshow('img', im)
         #     print(pixel, dist)
@@ -308,4 +285,15 @@ def arr_to_image(arr):
     img[arr == 3] = np.array([0, 0, 255])
     img[arr == 4] = np.array([0, 0, 0])
 
+    return img
+
+def draw_circle(img, centers, states, thickness=-1):
+
+    # img = np.ascontiguousarray(img, dtype=np.uint8)
+    for i in range(centers.shape[0]):
+        center = centers[i,:2]
+        radius = centers[i,2]
+
+        cv2.circle(img, (int(center[0]), int(center[1])), int(radius), states[int(centers[i,3])].tolist(), thickness)
+    
     return img

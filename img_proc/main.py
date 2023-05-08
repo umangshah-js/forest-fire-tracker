@@ -40,7 +40,7 @@ for i in tqdm(range(0, location),desc="Init Contours"):
 
     im = cv2.imread(img_path+"/0.png")
     
-    tmp_contour, tmp_centers = get_contour(im, radius=5, save_path = init_contour_path+f"{x}_{y}.npz")
+    tmp_contour, tmp_centers = get_contour(im, radius=3, save_path = init_contour_path+f"{x}_{y}.npz")
     centers.append(tmp_centers)
     contours.append(tmp_contour)
 
@@ -84,5 +84,5 @@ for j in tqdm(range(0,timestamp),desc="Timestamp"):
 
     # Saving the timestamp image and array
     cv2.imwrite(f"{time_im_save}/{j}.png", time_stmp_im)
-    np.savez(f"{time_arr_save}/{j}.npz", contours = time_stmp, centers = time_stmp_center)
+    np.savez_compressed(f"{time_arr_save}/{j}.npz", contours = time_stmp, centers = time_stmp_center)
    
