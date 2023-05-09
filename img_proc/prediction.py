@@ -1,19 +1,17 @@
 from dask.distributed import Client
 import numpy as np
-import pandas as pd
-import dask.dataframe as dd
 import dask.array as da
-from matplotlib import pyplot as plt
 import cv2
 from utils import *
 from tqdm.auto import tqdm
 import os
+import h5py
 
 
 def prediction(
     npzfile_pth,
     contour_chunk=(256, 256),
-    center_chunk=(5000, 4),
+    center_chunk=(4000, 4),
     eps=1e-3,
     k1=0.001,
     k2=10,
@@ -22,6 +20,8 @@ def prediction(
     dim=6155,
     img_save_path="test.png",
     zarr_save_path="centers.zarr",
+    npy_save_path="img.npy",
+    hdf5_save_path="centers.hdf5",
     f=open("prediction.log", "a+"),
 ):
     # countours_da  = da.from_array(npzfile['contours'], chunks=(512, 512))
@@ -94,13 +94,14 @@ def prediction(
     # """, file = f)
 
     # Store the centers array in zarr format
-    # centers.to_zarr(zarr_save_path, overwrite=True)
-    centers = centers.compute()
-    lst = zarr_save_path.split(".")[0]
-    np.save(lst+".npz",centers)
+    centers.to_zarr(zarr_save_path, overwrite=True)
+    # da.to_hdf5(hdf5_save_path, "/centers", centers)
+
     # For visualization and testing purposes only
-    # img = np.full((int(dim), int(dim), 3), 255, dtype=np.uint8)
-    # cv2.imwrite(img_save_path, draw_circle(img=img, centers=centers.compute(), states=states, thickness=-1) )
+    img = np.full((int(dim), int(dim), 3), 255, dtype=np.uint8)
+    img = draw_circle(img=img, centers=centers.compute(), states=states, thickness=-1)
+    cv2.imwrite(img_save_path, img)
+    np.save(npy_save_path, img)
 
     del (
         centers,
@@ -120,7 +121,7 @@ def prediction(
 
 
 if __name__ == "__main__":
-    client = Client(n_workers=3, threads_per_worker=1, memory_limit="4GB")
+    client = Client(n_workers=4, threads_per_worker=1, memory_limit="4GB")
     print(client)
     timestamps = 153
     f = open("prediction.log", "w+")
@@ -130,18 +131,25 @@ if __name__ == "__main__":
         print(f"{'-'*20} For timestamp {i} {'-'*20}", file=f)
 
         img_save_path = (
-            f"/home/mohit/NYU/Big_Data/Homework/forest-fire-tracker/data/prediction/"
+            f"/home/mohit/NYU/Big_Data/Homework/forest-fire-tracker/data/prediction/img"
         )
-        zarr_save_path = (
-            f"/home/mohit/NYU/Big_Data/Homework/forest-fire-tracker/data/zarr/"
-        )
+        zarr_save_path = f"/home/mohit/NYU/Big_Data/Homework/forest-fire-tracker/data/prediction/zarr"
+
+        npy_save_path = f"/home/mohit/NYU/Big_Data/Homework/forest-fire-tracker/data/prediction/npy/"
+
+        hdf5_save_path = f"/home/mohit/NYU/Big_Data/Homework/forest-fire-tracker/data/prediction/hdf5"
+
         os.makedirs(img_save_path, exist_ok=True)
         os.makedirs(zarr_save_path, exist_ok=True)
+        os.makedirs(npy_save_path, exist_ok=True)
+        os.makedirs(hdf5_save_path, exist_ok=True)
 
         prediction(
             npzfile_pth,
             img_save_path=f"{img_save_path}/{i}.png",
             zarr_save_path=f"{zarr_save_path}/{i}.zarr",
+            npy_save_path=f"{npy_save_path}/{i}.npy",
+            hdf5_save_path=f"{hdf5_save_path}/{i}.hdf5",
             f=f,
         )
         print(f"Done with {i}.png", file=f)
