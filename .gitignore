@@ -5,3 +5,6 @@ __pycache__
 *.zip
 *.xz
 data
+*.log
+*.png
+*.ipynb

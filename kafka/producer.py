@@ -6,17 +6,17 @@ from argparse import ArgumentParser, FileType
 from configparser import ConfigParser
 from confluent_kafka import Producer
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # Parse the command line.
     parser = ArgumentParser()
-    parser.add_argument('config_file', type=FileType('r'))
+    parser.add_argument("config_file", type=FileType("r"))
     args = parser.parse_args()
 
     # Parse the configuration.
     # See https://github.com/edenhill/librdkafka/blob/master/CONFIGURATION.md
     config_parser = ConfigParser()
     config_parser.read_file(args.config_file)
-    config = dict(config_parser['default'])
+    config = dict(config_parser["default"])
 
     # Create Producer instance
     producer = Producer(config)
@@ -26,22 +26,26 @@ if __name__ == '__main__':
     # failed delivery (after retries).
     def delivery_callback(err, msg):
         if err:
-            print('ERROR: Message failed delivery: {}'.format(err))
+            print("ERROR: Message failed delivery: {}".format(err))
         else:
-            print("Produced event to topic {topic}: key = {key:12} value = {value:12}".format(
-                topic=msg.topic(), key=msg.key().decode('utf-8'), value=msg.value().decode('utf-8')))
+            print(
+                "Produced event to topic {topic}: key = {key:12} value = {value:12}".format(
+                    topic=msg.topic(),
+                    key=msg.key().decode("utf-8"),
+                    value=msg.value().decode("utf-8"),
+                )
+            )
 
     # Produce data by selecting random values from these lists.
     topic = "testing"
     # user_ids = ['eabara', 'jsmith', 'sgarcia', 'jbernard', 'htanaka', 'awalther']
     # products = ['book', 'alarm clock', 't-shirts', 'gift card', 'batteries']
 
-    user_ids = ['a','a']
-    products = ['t','n']
+    user_ids = ["a", "a"]
+    products = ["t", "n"]
 
     count = 0
     for _ in range(10):
-
         user_id = choice(user_ids)
         product = choice(products)
         producer.produce(topic, product, user_id, callback=delivery_callback)

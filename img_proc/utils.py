@@ -4,6 +4,9 @@ import numpy as np
 import os
 import sys
 import math
+from tqdm.auto import tqdm
+import dask.array as da
+
 
 def get_center(im, radius=10, save_path=None):
     hsv = cv2.cvtColor(im, cv2.COLOR_BGR2HSV)
@@ -71,35 +74,6 @@ def get_center(im, radius=10, save_path=None):
     return center
 
 
-def get_color_center(im, centers):
-    states = []
-
-    for center in centers:
-        pixel = im[center[0], center[1], :]
-
-        green = np.array([0, 255, 0])
-        red = np.array([255, 0, 0])
-        black = np.array([0, 0, 0])
-        yellow = np.array([255, 255, 0])
-
-        state = [
-            0,  # "alive",
-            2,  # "burning",
-            3,  # "dead",
-            1,  # "heating"
-        ]
-
-        dist = []
-        dist.append([np.linalg.norm(pixel - green)])
-        dist.append([np.linalg.norm(pixel - red)])
-        dist.append([np.linalg.norm(pixel - black)])
-        dist.append([np.linalg.norm(pixel - yellow)])
-
-        states.append(state[np.argmin(np.array(dist))])
-
-    return states
-
-
 def get_color_contour(im, arr):
     # cv2.imshow('img', im)
     im[arr == 0] = np.array([255, 255, 255])
@@ -125,29 +99,35 @@ def get_color_contour(im, arr):
 
     return dist
 
+
 def get_color_centers(im, centers):
     ans = []
-    
+
     for center in centers:
         dist = []
         states = {
-        0: np.array([255, 255, 255]),  # nothing
-        1: np.array([0, 255, 0]),  # "alive",
-        2: np.array([0, 255, 255]),  # "heating",
-        3: np.array([0, 0, 255]),  # "burning",
-        4: np.array([0, 0, 0]),  # "dead",
+            0: np.array([255, 255, 255]),  # nothing
+            1: np.array([0, 255, 0]),  # "alive",
+            2: np.array([0, 255, 255]),  # "heating",
+            3: np.array([0, 0, 255]),  # "burning",
+            4: np.array([0, 0, 0]),  # "dead",
         }
 
-        pixel = im[math.ceil(center[1]),math.ceil(center[0]),:]
+        pixel = im[math.ceil(center[1]), math.ceil(center[0]), :]
 
         dist.append([np.linalg.norm(pixel - states[0])])
         dist.append([np.linalg.norm(pixel - states[1])])
         dist.append([np.linalg.norm(pixel - states[2])])
         dist.append([np.linalg.norm(pixel - states[3])])
         dist.append([np.linalg.norm(pixel - states[4])])
-        
+
         # print(pixel, dist)
         state = np.argmin(np.array(dist))
+        threshold = 20
+
+        if dist[state][0] > threshold:
+            state = 0
+
         # if state==2:
         #     cv2.imshow('img', im)
         #     print(pixel, dist)
@@ -175,9 +155,10 @@ def get_color_centers(im, centers):
         #     dist.append(np.linalg.norm(pixels-states[i], axis=1))
 
         # state = np.argmin(np.array(dist))
-        ans.append(np.array([center[0],center[1],center[2],state]))
+        ans.append(np.array([center[0], center[1], center[2], state]))
 
     return np.array(ans)
+
 
 def get_world_img(timestamp, m, n, data_pth, x_dim, y_dim):
     # Create an array og m*x_dim, n*y_dim, 3
@@ -195,14 +176,18 @@ def get_world_img(timestamp, m, n, data_pth, x_dim, y_dim):
     cv2.imshow("a", world_img)
     return world_img
 
-def get_world_arr(lst_arr, m,n, x_dim, y_dim):
+
+def get_world_arr(lst_arr, m, n, x_dim, y_dim):
     combine_arr = np.zeros((m * x_dim, n * y_dim), dtype=np.uint8)
 
     for i in range(m):
         for j in range(n):
-            combine_arr[(m - 1 - i) * x_dim : (m - i) * x_dim, j * y_dim : (j + 1) * y_dim] = lst_arr[i][j]
-    
+            combine_arr[
+                (m - 1 - i) * x_dim : (m - i) * x_dim, j * y_dim : (j + 1) * y_dim
+            ] = lst_arr[i][j]
+
     return combine_arr
+
 
 def generate_marker(world_img, sim_centers, m, n, x_dim, y_dim):
     n_trees = len(sim_centers)
@@ -307,5 +292,47 @@ def arr_to_image(arr):
     img[arr == 2] = np.array([0, 255, 255])
     img[arr == 3] = np.array([0, 0, 255])
     img[arr == 4] = np.array([0, 0, 0])
+
+    return img
+
+
+def draw_circle(img, centers, states, thickness=-1):
+    # img = np.ascontiguousarray(img, dtype=np.uint8)
+    for i in range(centers.shape[0]):
+        center = centers[i, :2]
+        radius = centers[i, 2]
+
+        cv2.circle(
+            img,
+            (int(center[0]), int(center[1])),
+            int(radius),
+            states[int(centers[i, 3])].tolist(),
+            thickness,
+        )
+
+    return img
+
+
+# NOTE: Not working. Dask is currently not limited to 1D array indexing
+# so it is not possible to index img with coord
+def draw_circle_dask(img, centers, states, thickness=-1):
+    for i in range(centers.shape[0]):
+        x, y, r = (
+            centers[i, 0].astype(int).compute(),
+            centers[i, 1].astype(int).compute(),
+            centers[i, 2].astype(int).compute(),
+        )
+        x_coord = da.linspace(x - r, x + r, 2 * r + 1)
+        y_coord = da.linspace(y - r, y + r, 2 * r + 1)
+        xx, yy = da.meshgrid(x_coord, y_coord)
+        circle = (xx - x) ** 2 + (yy - y) ** 2 <= r**2
+        xx, yy = xx[circle], yy[circle]
+        xx.compute_chunk_sizes()
+        yy.compute_chunk_sizes()
+        coord = da.concatenate(
+            [xx.flatten()[..., None], yy.flatten()[..., None]], axis=1
+        )
+        coord = coord.astype(int)
+        img[coord[:, 0], coord[:, 1]] = states[centers[i, 3].astype(int).compute()]
 
     return img
