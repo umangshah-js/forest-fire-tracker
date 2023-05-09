@@ -94,8 +94,10 @@ def prediction(
     # """, file = f)
 
     # Store the centers array in zarr format
-    centers.to_zarr(zarr_save_path, overwrite=True)
-
+    # centers.to_zarr(zarr_save_path, overwrite=True)
+    centers = centers.compute()
+    lst = zarr_save_path.split(".")[0]
+    np.save(lst+".npz",centers)
     # For visualization and testing purposes only
     # img = np.full((int(dim), int(dim), 3), 255, dtype=np.uint8)
     # cv2.imwrite(img_save_path, draw_circle(img=img, centers=centers.compute(), states=states, thickness=-1) )
