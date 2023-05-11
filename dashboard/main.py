@@ -72,6 +72,7 @@ def serve_layout():
         ],style={"maxHeight":"100%"}
     )
 
+
 app.layout = serve_layout
 
 @app.callback(Output('content', 'children'),

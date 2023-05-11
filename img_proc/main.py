@@ -8,10 +8,23 @@ from utils import *
 from tqdm.auto import tqdm
 import os
 import json
-from kafka import KafkaConsumer,KafkaProducer
+from kafka import KafkaConsumer, KafkaProducer
 import msgpack
 import msgpack_numpy as mnp
 import time
+
+
+def load_config(config_path):
+    config = None
+    with open(config_path, "r") as f:
+        config = json.load(f)
+
+    if config["gpu"]:
+        import cupy
+
+    return config
+
+
 def prediction(
     # npzfile_pth,
     centers,
@@ -26,7 +39,7 @@ def prediction(
     img_save_path="test.png",
     zarr_save_path="centers.zarr",
     f=open("prediction.log", "a+"),
-    stats_file=None
+    stats_file=None,
 ):
     # countours_da  = da.from_array(npzfile['contours'], chunks=(512, 512))
     # centers_da = da.from_array(npzfile['centers'], chunks=(512, 4))
@@ -90,7 +103,6 @@ def prediction(
     centers[ind_heat, 3] = 5  # fireline
 
     centers = centers.compute()
-    
     if(stats_file!=None):
         json.dump({
             "alive":centers[centers[:,3]==1].shape[0]+centers[centers[:,3]==5].shape[0],
@@ -102,22 +114,28 @@ def prediction(
         },stats_file)
         stats_file.close()
 
-    print(f"""
+    print(
+        f"""
     Number of trees alive(Green): {centers[centers[:,3]==1].shape[0]}
     Number of trees on fireline(Blue): {centers[centers[:,3]==5].shape[0]}
     Number of trees heating(Yellow): {centers[centers[:,3]==2].shape[0]}
     Number of trees burning(Red): {centers[centers[:,3]==3].shape[0]}
     Number of trees dead(Black): {centers[centers[:,3]==4].shape[0]}
-    """, file = f)
+    """,
+        file=f,
+    )
 
     # Store the centers array in zarr format
     # centers.to_zarr(zarr_save_path, overwrite=True)
-    
+
     lst = zarr_save_path.split(".")[0]
-    np.save(lst+".npz",centers)
+    np.save(lst + ".npz", centers)
     # For visualization and testing purposes only
     img = np.full((int(dim), int(dim), 3), 255, dtype=np.uint8)
-    cv2.imwrite(img_save_path, draw_circle(img=img, centers=centers, states=states, thickness=-1) )
+    cv2.imwrite(
+        img_save_path,
+        draw_circle(img=img, centers=centers, states=states, thickness=-1),
+    )
 
     del (
         centers,
@@ -135,67 +153,84 @@ def prediction(
         norm,
     )
 
+
 def on_send_success(record_metadata):
     print(record_metadata.topic)
     print(record_metadata.partition)
     print(record_metadata.offset)
 
+
 def on_send_error(excp):
-    log.error('I am an errback', exc_info=excp)
+    log.error("I am an errback", exc_info=excp)
+
 
 if __name__ == "__main__":
     client = Client(n_workers=6, threads_per_worker=1, memory_limit="1GB")
     print(client)
     # time_stamp = 0
-    num_chunks_total = 24*24
-    center_chunk=(5000, 4)
-    consumer = KafkaConsumer("fire-prediction",
-                         group_id='prediction_engine',
-                         bootstrap_servers=['localhost:9092'])
-    
-    event_producer = KafkaProducer(bootstrap_servers=['localhost:9092'])
+    num_chunks_total = 24 * 24
+    center_chunk = (5000, 4)
+    consumer = KafkaConsumer(
+        "fire-prediction",
+        group_id="prediction_engine",
+        bootstrap_servers=["localhost:9092"],
+    )
+
+    event_producer = KafkaProducer(bootstrap_servers=["localhost:9092"])
     event_topic_name = "wfs-events"
-    data_path = None
+    config = None
     zarr_save_path = None
     img_save_path = None
 
-    with open("../env.json") as env_file:
-        data_path = json.load(env_file)['data_path']
-        zarr_save_path = (
-                f"{data_path}/zarr"
-        )
-        img_save_path = (
-            f"{data_path}/final_images"
-        )
+    config = load_config("env.json")
+
+    data_path = config["data_path"]
+    gpu = config["gpu"]
+    zarr_save_path = f"{data_path}/zarr"
+    img_save_path = f"{data_path}/final_images"
+
     os.makedirs(img_save_path, exist_ok=True)
     os.makedirs(zarr_save_path, exist_ok=True)
     with open("prediction.log", "w+") as log_file:
         for timestamp in tqdm(range(150)):
-            centers_list = [] 
+            centers_list = []
 
             num_chunks = 0
             # print(f"Consuming messages for timestamp {str(timestamp)}")
             for message in consumer:
-                num_chunks+=1
+                num_chunks += 1
                 # print(message.key.decode(),num_chunks,num_chunks_total)
                 centers_coloured_packed = message.value
-                centers_coloured = msgpack.unpackb(centers_coloured_packed,object_hook=mnp.decode)
-                centers_list.append(da.from_array(centers_coloured))
+                centers_coloured = msgpack.unpackb(
+                    centers_coloured_packed, object_hook=mnp.decode
+                )
+
+                da_centers = da.from_array(centers_coloured)
+                if gpu:
+                    da_centers = da_centers.map_blocks(cupy.asarray)
+
+                centers_list.append(da_centers)
+
                 # print(centers.flags.writeable)
-                if(num_chunks==num_chunks_total):
+                if num_chunks == num_chunks_total:
                     # print("Received all data for the timestamp")
-                    event_producer.send(event_topic_name,key=b"time_stamp",value=str(timestamp+1).encode(),partition=0).add_errback(on_send_error)
+                    event_producer.send(
+                        event_topic_name,
+                        key=b"time_stamp",
+                        value=str(timestamp + 1).encode(),
+                        partition=0,
+                    ).add_errback(on_send_error)
                     event_producer.flush()
                     break
             centers = da.concatenate(centers_list)
             centers = da.rechunk(centers, chunks=center_chunk)
             start = time.time()
-            stats_file = open(f"{img_save_path}/{timestamp}.json","w+")
+            stats_file = open(f"{img_save_path}/{timestamp}.json", "w+")
             prediction(
                 centers,
                 zarr_save_path=f"{zarr_save_path}/{timestamp}.zarr",
-                img_save_path = f"{img_save_path}/{timestamp}.png",
+                img_save_path=f"{img_save_path}/{timestamp}.png",
                 f=log_file,
-                stats_file=stats_file
+                stats_file=stats_file,
             )
-            print("Time to predict: ",time.time() - start)
+            print("Time to predict: ", time.time() - start)
