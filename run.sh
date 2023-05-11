@@ -16,7 +16,7 @@ python main.py > dashboard.logs 2>&1 &
 sleep 5
 google-chrome http://127.0.0.1:8050 --force-device-scale-factor=1 --start-maximized > /dev/null 2>&1 &
 cd ..
-python img_proc/main.py > prediction_engine.log 2>&1 &
+python prediction_engine/main.py > prediction_engine.log 2>&1 &
 sleep 2
 cd image_preprocessor
 bash -x run.sh
