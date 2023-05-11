@@ -93,7 +93,8 @@ def prediction(
     
     if(stats_file!=None):
         json.dump({
-            "alive":centers[centers[:,3]==1].shape[0],
+            "alive":centers[centers[:,3]==1].shape[0]+centers[centers[:,3]==5].shape[0],
+            "predicted_alive":centers[centers[:,3]==1].shape[0],
             "fireline": centers[centers[:,3]==5].shape[0],
             "heating": centers[centers[:,3]==2].shape[0],
             "burning": centers[centers[:,3]==3].shape[0],
