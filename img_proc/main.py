@@ -1,87 +1,200 @@
-import os
-import glob
+from dask.distributed import Client
+import numpy as np
+import pandas as pd
+import dask.dataframe as dd
+import dask.array as da
+from matplotlib import pyplot as plt
 from utils import *
 from tqdm.auto import tqdm
+import os
+import json
+from kafka import KafkaConsumer,KafkaProducer
+import msgpack
+import msgpack_numpy as mnp
 import time
-import cv2
-from matplotlib import pyplot as plt
-import numpy as np
+def prediction(
+    # npzfile_pth,
+    centers,
+    contour_chunk=(256, 256),
+    center_chunk=(5000, 4),
+    eps=1e-3,
+    k1=0.001,
+    k2=10,
+    alpha=5,
+    offset=7,
+    dim=6155,
+    img_save_path="test.png",
+    zarr_save_path="centers.zarr",
+    f=open("prediction.log", "a+"),
+    stats_file=None
+):
+    # countours_da  = da.from_array(npzfile['contours'], chunks=(512, 512))
+    # centers_da = da.from_array(npzfile['centers'], chunks=(512, 4))
+    # print(centers)
+    states = {
+        0: np.array([255, 255, 255], dtype=np.uint8),  # nothing
+        1: np.array([0, 255, 0], dtype=np.uint8),  # "alive",
+        2: np.array([0, 255, 255], dtype=np.uint8),  # "heating",
+        3: np.array([0, 0, 255], dtype=np.uint8),  # "burning",
+        4: np.array([0, 0, 0], dtype=np.uint8),  # "dead",
+        5: np.array([255, 0, 0], dtype=np.uint8),  # "fireline",
+    }
 
-# import multiprocessing as mp
-# Pool = mp.Pool(mp.cpu_count())
+    # print(f"Overall number of trees: {centers_da.shape[0]}")
 
+    # countours = da.from_array(np.load(npzfile_pth)['contours'], chunks=contour_chunk)
+    # centers = da.from_array(np.load(npzfile_pth)["centers"], chunks=center_chunk)
 
-# Hyperparameters
-data_pth = "/home/mohit/NYU/Big_Data/Homework/forest-fire-tracker/data"
-m, n = 24, 24
-x_dim, y_dim = 256, 256
-timestamp = 153
-location = m * n  # 24*24 locations
+    # Get the burning centers
+    ind = (centers[:, 3] >= 2) & (centers[:, 3] < 4) & (centers[:, 2] >= 10)
+    burning_centers = centers[ind, :]
+    # heat = da.from_array(np.zeros((centers.shape[0], 1)),chunks=(center_chunk[0],1))
 
+    # Computing Chunk sizes
+    # heat.compute_chunk_sizes()
+    # burning_centers.compute_chunk_sizes()
+    # print(f"Number of burning trees: {burning_centers.shape[0]}", file=f)
 
-states = {0: "empty", 1: "alive", 2: "heating", 3: "burning", 4: "dead"}
+    # Get the heats for each center
+    # for i in range(burning_centers.shape[0]):
+    #     norm = da.linalg.norm(centers[:,:2] - burning_centers[i, :2], axis=1, ord=2)[...,None]
+    #     heat += (k2/(norm+eps) + k1/(1+(da.exp(((norm/10000)+eps)))))*100
+    coord = centers[:, :2][..., None]
+    diff = coord - burning_centers[:, :2].T
+    norm = da.linalg.norm(diff, axis=1, ord=2)
+    norm = k2 / (norm + eps) + k1 / (1 + (da.exp(((norm / 10000) + eps))))
+    heat = da.sum(norm, axis=1)[..., None]
 
+    # Setting the fireline
+    # Using mean and std deviation to set the threshold
 
-contours = []
-centers = []
-for i in tqdm(range(0, location), desc="Init Contours"):
-    x = i // 24
-    y = i % 24
+    lim = heat[~ind].mean()
+    lim_std = heat[~ind].std()
 
-    img_path = f"{data_pth}/raw/Cam_{x}_{y}"
-    init_contour_path = f"{data_pth}/init_contour/"
-    os.makedirs(init_contour_path, exist_ok=True)
+    # plt.hist(tmp,bins=100)
+    # plt.xlabel("Heat")
+    # plt.ylabel("Frequency")
+    # plt.title("Heat Distribution")
+    # plt.show()
+    # print(f"Trees ommited in distribution: {da.sum(ind).compute()}", file = f)
 
-    im = cv2.imread(img_path + "/0.png")
+    # print(f"Limiting heat value: {lim} with std deviation: {lim_std}", file = f)
 
-    tmp_contour, tmp_centers = get_contour(
-        im, radius=3, save_path=init_contour_path + f"{x}_{y}.npz"
+    thresh_max = lim + alpha * lim_std + offset * lim_std
+    thresh_min = lim - alpha * lim_std + offset * lim_std
+    # print(f'thresh_min: {thresh_min}, thresh_max: {thresh_max}', file = f)
+
+    # Setting the alive trees on heating
+    ind2 = heat >= thresh_min
+    ind_heat = ind2[:, 0] & (centers[:, 3] == 1)
+    centers[ind_heat, 3] = 5  # fireline
+
+    centers = centers.compute()
+    
+    if(stats_file!=None):
+        json.dump({
+            "alive":centers[centers[:,3]==1].shape[0],
+            "fireline": centers[centers[:,3]==5].shape[0],
+            "heating": centers[centers[:,3]==2].shape[0],
+            "burning": centers[centers[:,3]==3].shape[0],
+            "dead": centers[centers[:,3]==4].shape[0],
+        },stats_file)
+        stats_file.close()
+
+    print(f"""
+    Number of trees alive(Green): {centers[centers[:,3]==1].shape[0]}
+    Number of trees on fireline(Blue): {centers[centers[:,3]==5].shape[0]}
+    Number of trees heating(Yellow): {centers[centers[:,3]==2].shape[0]}
+    Number of trees burning(Red): {centers[centers[:,3]==3].shape[0]}
+    Number of trees dead(Black): {centers[centers[:,3]==4].shape[0]}
+    """, file = f)
+
+    # Store the centers array in zarr format
+    # centers.to_zarr(zarr_save_path, overwrite=True)
+    
+    lst = zarr_save_path.split(".")[0]
+    np.save(lst+".npz",centers)
+    # For visualization and testing purposes only
+    img = np.full((int(dim), int(dim), 3), 255, dtype=np.uint8)
+    cv2.imwrite(img_save_path, draw_circle(img=img, centers=centers, states=states, thickness=-1) )
+
+    del (
+        centers,
+        heat,
+        burning_centers,
+        ind,
+        ind2,
+        ind_heat,
+        thresh_max,
+        thresh_min,
+        lim,
+        lim_std,
+        coord,
+        diff,
+        norm,
     )
-    centers.append(tmp_centers)
-    contours.append(tmp_contour)
 
+def on_send_success(record_metadata):
+    print(record_metadata.topic)
+    print(record_metadata.partition)
+    print(record_metadata.offset)
 
-for j in tqdm(range(0, timestamp), desc="Timestamp"):
-    time_stmp = np.zeros((m * x_dim, n * y_dim), dtype=np.uint8)
-    time_stmp_center = []
+def on_send_error(excp):
+    log.error('I am an errback', exc_info=excp)
 
-    time_arr_save = f"{data_pth}/timestamps/arr"
-    os.makedirs(time_arr_save, exist_ok=True)
+if __name__ == "__main__":
+    client = Client(n_workers=6, threads_per_worker=1, memory_limit="1GB")
+    print(client)
+    # time_stamp = 0
+    num_chunks_total = 24*24
+    center_chunk=(5000, 4)
+    consumer = KafkaConsumer("fire-prediction",
+                         group_id='prediction_engine',
+                         bootstrap_servers=['localhost:9092'])
+    
+    event_producer = KafkaProducer(bootstrap_servers=['localhost:9092'])
+    event_topic_name = "wfs-events"
+    data_path = None
+    zarr_save_path = None
+    img_save_path = None
 
-    time_im_save = f"{data_pth}/timestamps/images"
-    os.makedirs(time_im_save, exist_ok=True)
+    with open("../env.json") as env_file:
+        data_path = json.load(env_file)['data_path']
+        zarr_save_path = (
+                f"{data_path}/zarr"
+        )
+        img_save_path = (
+            f"{data_path}/final_images"
+        )
+    os.makedirs(img_save_path, exist_ok=True)
+    os.makedirs(zarr_save_path, exist_ok=True)
+    with open("prediction.log", "w+") as log_file:
+        for timestamp in tqdm(range(150)):
+            centers_list = [] 
 
-    for i in range(0, location):
-        x = i // 24
-        y = i % 24
-
-        # os.makedirs(f"{data_pth}/contours/{x}_{y}", exist_ok=True)
-        img_path = f"{data_pth}/raw/Cam_{x}_{y}"
-        tmp_contour = contours[i]
-        tmp_centers = centers[i]
-
-        im = cv2.imread(img_path + f"/{j}.png")
-
-        contour_color = get_color_contour(im, tmp_contour)
-
-        # Verfying whether there is center or not
-        if len(tmp_centers.shape) == 2:
-            center_color = get_color_centers(im, tmp_centers)
-
-            # Origin shift the centers
-            center_color[:, 1] = (m - x) * x_dim - center_color[:, 1]
-            center_color[:, 0] = y * y_dim + center_color[:, 0]
-            time_stmp_center.append(center_color)
-
-        time_stmp[
-            (m - 1 - x) * x_dim : (m - x) * x_dim, y * y_dim : (y + 1) * y_dim
-        ] = contour_color
-
-    time_stmp_center = np.concatenate(time_stmp_center, axis=0)
-    time_stmp_im = arr_to_image(time_stmp)
-
-    # Saving the timestamp image and array
-    cv2.imwrite(f"{time_im_save}/{j}.png", time_stmp_im)
-    np.savez_compressed(
-        f"{time_arr_save}/{j}.npz", contours=time_stmp, centers=time_stmp_center
-    )
+            num_chunks = 0
+            # print(f"Consuming messages for timestamp {str(timestamp)}")
+            for message in consumer:
+                num_chunks+=1
+                # print(message.key.decode(),num_chunks,num_chunks_total)
+                centers_coloured_packed = message.value
+                centers_coloured = msgpack.unpackb(centers_coloured_packed,object_hook=mnp.decode)
+                centers_list.append(da.from_array(centers_coloured))
+                # print(centers.flags.writeable)
+                if(num_chunks==num_chunks_total):
+                    # print("Received all data for the timestamp")
+                    event_producer.send(event_topic_name,key=b"time_stamp",value=str(timestamp+1).encode(),partition=0).add_errback(on_send_error)
+                    event_producer.flush()
+                    break
+            centers = da.concatenate(centers_list)
+            centers = da.rechunk(centers, chunks=center_chunk)
+            start = time.time()
+            stats_file = open(f"{img_save_path}/{timestamp}.json","w+")
+            prediction(
+                centers,
+                zarr_save_path=f"{zarr_save_path}/{timestamp}.zarr",
+                img_save_path = f"{img_save_path}/{timestamp}.png",
+                f=log_file,
+                stats_file=stats_file
+            )
+            print("Time to predict: ",time.time() - start)
