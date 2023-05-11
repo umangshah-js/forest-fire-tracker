@@ -6,7 +6,8 @@ from utils import *
 from tqdm.auto import tqdm
 import os
 import h5py
-import cupy 
+import cupy
+
 
 def prediction(
     npzfile_pth,
@@ -41,7 +42,7 @@ def prediction(
     # countours = da.from_array(np.load(npzfile_pth)['contours'], chunks=contour_chunk)
     centers = da.from_array(np.load(npzfile_pth)["centers"], chunks=center_chunk)
     centers = centers.map_blocks(cupy.asarray)
-    
+
     # Get the burning centers
     ind = (centers[:, 3] >= 2) & (centers[:, 3] < 4) & (centers[:, 2] >= 10)
     burning_centers = centers[ind, :]

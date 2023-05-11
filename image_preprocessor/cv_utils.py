@@ -4,6 +4,7 @@ import os
 import sys
 import math
 
+
 def get_contour(im, radius=10, save_path=None):
     np.set_printoptions(threshold=sys.maxsize)
 
