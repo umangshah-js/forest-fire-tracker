@@ -12,6 +12,18 @@ from kafka import KafkaConsumer,KafkaProducer
 import msgpack
 import msgpack_numpy as mnp
 import time
+
+def load_config(config_path):
+    config = None
+    with open(config_path, "r") as f:
+        config = json.load(f)
+    
+    if config['gpu']:
+        import cupy
+
+    return config
+
+
 def prediction(
     # npzfile_pth,
     centers,
@@ -154,18 +166,21 @@ if __name__ == "__main__":
     
     event_producer = KafkaProducer(bootstrap_servers=['localhost:9092'])
     event_topic_name = "wfs-events"
-    data_path = None
+    config = None
     zarr_save_path = None
     img_save_path = None
 
-    with open("../env.json") as env_file:
-        data_path = json.load(env_file)['data_path']
-        zarr_save_path = (
-                f"{data_path}/zarr"
-        )
-        img_save_path = (
-            f"{data_path}/final_images"
-        )
+    config = load_config("env.json")
+    
+    data_path = config['data_path']
+    gpu = config['gpu']
+    zarr_save_path = (
+            f"{data_path}/zarr"
+    )
+    img_save_path = (
+        f"{data_path}/final_images"
+    )
+
     os.makedirs(img_save_path, exist_ok=True)
     os.makedirs(zarr_save_path, exist_ok=True)
     with open("prediction.log", "w+") as log_file:
@@ -179,7 +194,13 @@ if __name__ == "__main__":
                 # print(message.key.decode(),num_chunks,num_chunks_total)
                 centers_coloured_packed = message.value
                 centers_coloured = msgpack.unpackb(centers_coloured_packed,object_hook=mnp.decode)
-                centers_list.append(da.from_array(centers_coloured))
+
+                da_centers = da.from_array(centers_coloured)
+                if gpu:
+                    da_centers = da_centers.map_blocks(cupy.asarray)
+
+                centers_list.append(da_centers)
+
                 # print(centers.flags.writeable)
                 if(num_chunks==num_chunks_total):
                     # print("Received all data for the timestamp")

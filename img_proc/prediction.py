@@ -6,12 +6,12 @@ from utils import *
 from tqdm.auto import tqdm
 import os
 import h5py
-
+import cupy 
 
 def prediction(
     npzfile_pth,
     contour_chunk=(256, 256),
-    center_chunk=(4000, 4),
+    center_chunk=(7000, 4),
     eps=1e-3,
     k1=0.001,
     k2=10,
@@ -40,7 +40,8 @@ def prediction(
 
     # countours = da.from_array(np.load(npzfile_pth)['contours'], chunks=contour_chunk)
     centers = da.from_array(np.load(npzfile_pth)["centers"], chunks=center_chunk)
-
+    centers = centers.map_blocks(cupy.asarray)
+    
     # Get the burning centers
     ind = (centers[:, 3] >= 2) & (centers[:, 3] < 4) & (centers[:, 2] >= 10)
     burning_centers = centers[ind, :]
@@ -94,14 +95,14 @@ def prediction(
     # """, file = f)
 
     # Store the centers array in zarr format
-    centers.to_zarr(zarr_save_path, overwrite=True)
+    # centers.to_zarr(zarr_save_path, overwrite=True)
     # da.to_hdf5(hdf5_save_path, "/centers", centers)
 
     # For visualization and testing purposes only
     img = np.full((int(dim), int(dim), 3), 255, dtype=np.uint8)
     img = draw_circle(img=img, centers=centers.compute(), states=states, thickness=-1)
     cv2.imwrite(img_save_path, img)
-    np.save(npy_save_path, img)
+    np.savez_compressed(npy_save_path, img=img)
 
     del (
         centers,
@@ -121,7 +122,7 @@ def prediction(
 
 
 if __name__ == "__main__":
-    client = Client(n_workers=4, threads_per_worker=1, memory_limit="4GB")
+    client = Client(n_workers=2, threads_per_worker=1, memory_limit="3GB")
     print(client)
     timestamps = 153
     f = open("prediction.log", "w+")
@@ -135,7 +136,7 @@ if __name__ == "__main__":
         )
         zarr_save_path = f"/home/mohit/NYU/Big_Data/Homework/forest-fire-tracker/data/prediction/zarr"
 
-        npy_save_path = f"/home/mohit/NYU/Big_Data/Homework/forest-fire-tracker/data/prediction/npy/"
+        npy_save_path = f"/home/mohit/NYU/Big_Data/Homework/forest-fire-tracker/data/prediction/npz/"
 
         hdf5_save_path = f"/home/mohit/NYU/Big_Data/Homework/forest-fire-tracker/data/prediction/hdf5"
 
@@ -148,7 +149,7 @@ if __name__ == "__main__":
             npzfile_pth,
             img_save_path=f"{img_save_path}/{i}.png",
             zarr_save_path=f"{zarr_save_path}/{i}.zarr",
-            npy_save_path=f"{npy_save_path}/{i}.npy",
+            npy_save_path=f"{npy_save_path}/{i}.npz",
             hdf5_save_path=f"{hdf5_save_path}/{i}.hdf5",
             f=f,
         )
