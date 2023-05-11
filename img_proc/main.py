@@ -1,4 +1,5 @@
 from dask.distributed import Client
+from dask_cuda import LocalCUDACluster
 import numpy as np
 import pandas as pd
 import dask.dataframe as dd
@@ -12,13 +13,13 @@ from kafka import KafkaConsumer, KafkaProducer
 import msgpack
 import msgpack_numpy as mnp
 import time
-
-
+import cupy
+import redis
 def load_config(config_path):
     config = None
     with open(config_path, "r") as f:
         config = json.load(f)
-
+    print(config)
     if config["gpu"]:
         import cupy
 
@@ -165,7 +166,9 @@ def on_send_error(excp):
 
 
 if __name__ == "__main__":
-    client = Client(n_workers=6, threads_per_worker=1, memory_limit="1GB")
+    client = Client(n_workers=2, threads_per_worker=4, memory_limit="2GB")
+    # cluster = LocalCUDACluster(n_workers=1, threads_per_worker=100) 
+    # client = Client(cluster)
     print(client)
     # time_stamp = 0
     num_chunks_total = 24 * 24
@@ -204,11 +207,14 @@ if __name__ == "__main__":
                 centers_coloured = msgpack.unpackb(
                     centers_coloured_packed, object_hook=mnp.decode
                 )
-
-                da_centers = da.from_array(centers_coloured)
+                
+                
                 if gpu:
-                    da_centers = da_centers.map_blocks(cupy.asarray)
-
+                    cpy_centers = cupy.array(centers_coloured)
+                    da_centers = da.from_array(centers_coloured,asarray=False)
+                    # da_centers = da_centers.map_blocks(cupy.asarray)
+                else:   
+                    da_centers = da.from_array(centers_coloured)
                 centers_list.append(da_centers)
 
                 # print(centers.flags.writeable)
@@ -222,6 +228,7 @@ if __name__ == "__main__":
                     ).add_errback(on_send_error)
                     event_producer.flush()
                     break
+            consumer.commit()
             centers = da.concatenate(centers_list)
             centers = da.rechunk(centers, chunks=center_chunk)
             start = time.time()
@@ -234,3 +241,7 @@ if __name__ == "__main__":
                 stats_file=stats_file,
             )
             print("Time to predict: ", time.time() - start)
+    r = redis.Redis(host="localhost", port=6379, db=0)
+    r.flushdb()
+    
+    

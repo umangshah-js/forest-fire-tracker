@@ -43,7 +43,7 @@ def on_send_success(record_metadata):
 
 
 def on_send_error(excp):
-    log.error("I am an errback", exc_info=excp)
+    print("I am an errback", exc_info=excp)
 
 
 r = redis.Redis(host="localhost", port=6379, db=0)
@@ -73,7 +73,7 @@ for message in consumer:
     img = cv2.imdecode(image_np, cv2.IMREAD_COLOR)
     redis_key = "_".join(message.key.decode().split("_")[:-1]) + "_centers"
     if time_stamp == 0:
-        arr, centers = get_contour(img, radius=10, save_path=None)
+        arr, centers = get_contour(img, radius=5, save_path=None)
         centers_packed = msgpack.packb(centers, default=mnp.encode)
         r.set(redis_key, centers_packed)
     else:

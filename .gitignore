@@ -10,3 +10,4 @@ data
 *.ipynb
 venv
 kafka_topic/kafka_2.13-3.4.0
+*.log
