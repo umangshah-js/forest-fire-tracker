@@ -127,7 +127,7 @@ def prediction(
     )
 
     # Store the centers array in zarr format
-    # centers.to_zarr(zarr_save_path, overwrite=True)
+    centers.to_zarr(zarr_save_path, overwrite=True)
 
     lst = zarr_save_path.split(".")[0]
     np.save(lst + ".npz", centers)
