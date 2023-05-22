@@ -1,0 +1,143 @@
+version: "3.9"
+networks:
+  fire-tracker:
+    driver: bridge
+services:
+  redis:
+    image: redis:6.2.5-alpine
+    ports:
+      - 6379:6379
+    networks:
+      fire-tracker:
+        aliases:
+          - redis
+  kafka:
+    image: bitnami/kafka:3.4.0
+    ports:
+      - 9092:9092
+    environment:
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=false
+    networks:
+      fire-tracker:
+        aliases:
+          - kafka
+  kafka-topics-setup:
+    image: bitnami/kafka:3.4.0
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      "
+      # blocks until kafka is reachable
+      /opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list
+      # alternatively with cp: cub kafka-ready -b kafka:29092 1 30 &&
+
+      # just to make sure everything else like UI and microservices are done
+      sleep 5
+
+      echo 'Creating kafka topics'
+      /opt/bitnami/kafka/bin/kafka-topics.sh --create --topic image-preprocess --bootstrap-server kafka:9092 --partitions 4 --if-not-exists
+      /opt/bitnami/kafka/bin/kafka-topics.sh --create --topic wfs-events --bootstrap-server kafka:9092 --partitions 1 --if-not-exists
+      /opt/bitnami/kafka/bin/kafka-topics.sh --create --topic fire-prediction --bootstrap-server kafka:9092 --partitions 1 --if-not-exists
+      # For file in seeds directory create channels and feed the data.
+      # for file in /data/*; do
+      #     seed=\"$$(basename \"$$file\")\"
+      #     # TODO add SEED,X,Y variable support
+      #     kafka-topics --bootstrap-server kafka:9092 \\
+      #         --create --if-not-exists --topic $$seed \\
+      #         --replication-factor 1 --partitions 1
+
+      #     # If seeds are just touched files, just create the topic and do not
+      #     # feed it the seed.
+      #     [ \"$$(du "$$file" | grep -o \"[0-9]*\")\" = \"0\" ] ||
+      #         kafka-console-producer --bootstrap-server kafka:9092 \\
+      #             --topic $$seed < $$file
+      # done
+
+      echo 'Successfully created the following topics:'
+      /opt/bitnami/kafka/bin/kafka-topics --bootstrap-server kafka:9092 --list
+      "
+    networks:
+      - fire-tracker
+
+  kafka-metrics:
+    image: bitnami/kafka-exporter:1.6.0
+    restart: on-failure
+    ports:
+      - 9308:9308
+    networks:
+      fire-tracker:
+        aliases:
+          - kafka-exporter
+
+  prediction-engine:
+    build: prediction_engine
+    environment:
+      - KAFKA_BROKER=kafka:9092
+      - SIMULATION_DATA_PATH=/data
+    volumes:
+      - /media/umang/Windows 10/Big Data/llcpp/Wildfire_sim_Data/data:/data:rw
+    networks:
+      - fire-tracker
+
+
+  preprocessor-0:
+    build: image_preprocessor
+    environment:
+      - KAFKA_BROKER=kafka:9092
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PARTITION=0
+    networks:
+      - fire-tracker
+  preprocessor-1:
+    build: image_preprocessor
+    environment:
+      - KAFKA_BROKER=kafka:9092
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PARTITION=1
+    networks:
+      - fire-tracker
+  preprocessor-2:
+    build: image_preprocessor
+    environment:
+      - KAFKA_BROKER=kafka:9092
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PARTITION=2
+    networks:
+      - fire-tracker
+  preprocessor-3:
+    build: image_preprocessor
+    environment:
+      - KAFKA_BROKER=kafka:9092
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PARTITION=3
+    networks:
+      - fire-tracker
+  producer-0:
+    build: producer_0
+    environment:
+      - KAFKA_BROKER=kafka:9092
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - SIMULATION_DATA_PATH=/data
+    volumes:
+      - /media/umang/Windows 10/Big Data/llcpp/Wildfire_sim_Data/data:/data:ro
+    networks:
+      - fire-tracker
+  dashboard:
+    build: dashboard
+    restart: on-failure
+    ports:
+      - 8050:8050
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    networks:
+      - fire-tracker
+    volumes:
+      - /media/umang/Windows 10/Big Data/llcpp/Wildfire_sim_Data/data/final_images:/usr/src/app/assets:ro
+
+

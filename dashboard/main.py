@@ -16,14 +16,29 @@ from prometheus_client import parser
 import threading
 import redis
 
-r = redis.Redis(host="localhost", port=6379, db=0)
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+REDIS_DB = int(os.getenv("REDIS_DB", "0"))
+
+
+r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB)
 system_stats_lock = threading.Lock()
 system_stats = {}
 
 def get_system_stats():
     threading.Timer(1, get_system_stats).start()
     system_stats_temp = {}
-    response = requests.get("http://localhost:9308/metrics").text
+    system_stats_temp['image-preprocess'] = 0
+    system_stats_temp['wfs-events'] = 0
+    system_stats_temp['fire-prediction'] = 0
+    connected = False
+    while not connected:
+        try:
+            response = requests.get("http://kafka-exporter:9308/metrics").text
+            connected = True
+        except:
+            print("Retrying in 1s")
+            time.sleep(1)
     # print(response.replace("#.*\n",""))
     for item in parser.text_string_to_metric_families(response):
         if item.name == "kafka_consumergroup_lag_sum":
@@ -171,4 +186,5 @@ def update_timestamp(n,session_id):
 
 
 if __name__ == "__main__":
-    app.run_server(debug=False)
+    time.sleep(10)
+    app.run_server(host="0.0.0.0",debug=False)

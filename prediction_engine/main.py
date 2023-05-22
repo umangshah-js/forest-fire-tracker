@@ -1,5 +1,4 @@
 from dask.distributed import Client
-from dask_cuda import LocalCUDACluster
 import numpy as np
 import pandas as pd
 import dask.dataframe as dd
@@ -9,23 +8,23 @@ from utils import *
 from tqdm.auto import tqdm
 import os
 import json
-from kafka import KafkaConsumer, KafkaProducer
+from kafka import KafkaConsumer, KafkaProducer, TopicPartition
 import msgpack
 import msgpack_numpy as mnp
 import time
-import cupy
+# import cupy
 import redis
-def load_config(config_path):
-    config = None
-    with open(config_path, "r") as f:
-        config = json.load(f)
-    print(config)
-    if config["gpu"]:
-        import cupy
+# def load_config(config_path):
+#     config = None
+#     with open(config_path, "r") as f:
+#         config = json.load(f)
+#     print(config)
+#     if config["gpu"]:
+#         import cupy
 
-    return config
-
-
+#     return config
+KAFKA_BROKER = os.getenv("KAFKA_BROKER", "localhost:9092")
+SIMULATION_DATA_PATH = os.getenv("SIMULATION_DATA_PATH", None)
 def prediction(
     # npzfile_pth,
     centers,
@@ -39,7 +38,7 @@ def prediction(
     dim=6155,
     img_save_path="test.png",
     zarr_save_path="centers.zarr",
-    f=open("prediction.log", "a+"),
+    # f=open("prediction.log", "a+"),
     stats_file=None,
 ):
     # countours_da  = da.from_array(npzfile['contours'], chunks=(512, 512))
@@ -115,19 +114,19 @@ def prediction(
         },stats_file)
         stats_file.close()
 
-    print(
-        f"""
-    Number of trees alive(Green): {centers[centers[:,3]==1].shape[0]}
-    Number of trees on fireline(Blue): {centers[centers[:,3]==5].shape[0]}
-    Number of trees heating(Yellow): {centers[centers[:,3]==2].shape[0]}
-    Number of trees burning(Red): {centers[centers[:,3]==3].shape[0]}
-    Number of trees dead(Black): {centers[centers[:,3]==4].shape[0]}
-    """,
-        file=f,
-    )
+    # print(
+    #     f"""
+    # Number of trees alive(Green): {centers[centers[:,3]==1].shape[0]}
+    # Number of trees on fireline(Blue): {centers[centers[:,3]==5].shape[0]}
+    # Number of trees heating(Yellow): {centers[centers[:,3]==2].shape[0]}
+    # Number of trees burning(Red): {centers[centers[:,3]==3].shape[0]}
+    # Number of trees dead(Black): {centers[centers[:,3]==4].shape[0]}
+    # """,
+    #     file=f,
+    # )
 
     # Store the centers array in zarr format
-    centers.to_zarr(zarr_save_path, overwrite=True)
+    # centers.to_zarr(zarr_save_path, overwrite=True)
 
     lst = zarr_save_path.split(".")[0]
     np.save(lst + ".npz", centers)
@@ -162,85 +161,103 @@ def on_send_success(record_metadata):
 
 
 def on_send_error(excp):
-    log.error("I am an errback", exc_info=excp)
+    print("I am an errback", exc_info=excp)
 
+consumer = None
+def connect_to_kafka():
+    global consumer
+    try:
+        consumer = KafkaConsumer(
+            group_id="prediction_engine",
+            bootstrap_servers=[KAFKA_BROKER],
+        )
+        consumer.assign([TopicPartition("fire-prediction",0)])
+        consumer.seek_to_beginning()
+        consumer.commit()
+    except Exception as e:
+        time.sleep(1)
+        print("retrying connecting to kafka")
+        connect_to_kafka()
 
 if __name__ == "__main__":
-    client = Client(n_workers=2, threads_per_worker=4, memory_limit="2GB")
+    client = Client(n_workers=2, threads_per_worker=2, memory_limit="500MB")
     # cluster = LocalCUDACluster(n_workers=1, threads_per_worker=100) 
     # client = Client(cluster)
     print(client)
     # time_stamp = 0
     num_chunks_total = 24 * 24
     center_chunk = (5000, 4)
-    consumer = KafkaConsumer(
-        "fire-prediction",
-        group_id="prediction_engine",
-        bootstrap_servers=["localhost:9092"],
-    )
-
-    event_producer = KafkaProducer(bootstrap_servers=["localhost:9092"])
+    connect_to_kafka()
+    event_producer = KafkaProducer(bootstrap_servers=[KAFKA_BROKER])
     event_topic_name = "wfs-events"
+    print("Publishing event",event_producer.send(
+        event_topic_name,
+        key=b"time_stamp",
+        value=b"0",
+        partition=0,
+    ).add_errback(on_send_error))
+    event_producer.flush()
+    print("Event sent")
     config = None
     zarr_save_path = None
     img_save_path = None
 
-    config = load_config("env.json")
+    # config = load_config("env.json")
 
-    data_path = config["data_path"]
-    gpu = config["gpu"]
+    data_path = SIMULATION_DATA_PATH
+    gpu = False
     zarr_save_path = f"{data_path}/zarr"
     img_save_path = f"{data_path}/final_images"
 
     os.makedirs(img_save_path, exist_ok=True)
     os.makedirs(zarr_save_path, exist_ok=True)
-    with open("prediction.log", "w+") as log_file:
-        for timestamp in tqdm(range(150)):
-            centers_list = []
+    
+    # with open("prediction.log", "w+") as log_file:
+    for timestamp in tqdm(range(150)):
+        centers_list = []
 
-            num_chunks = 0
-            # print(f"Consuming messages for timestamp {str(timestamp)}")
-            for message in consumer:
-                num_chunks += 1
-                # print(message.key.decode(),num_chunks,num_chunks_total)
-                centers_coloured_packed = message.value
-                centers_coloured = msgpack.unpackb(
-                    centers_coloured_packed, object_hook=mnp.decode
-                )
-                
-                
-                if gpu:
-                    cpy_centers = cupy.array(centers_coloured)
-                    da_centers = da.from_array(centers_coloured,asarray=False)
-                    # da_centers = da_centers.map_blocks(cupy.asarray)
-                else:   
-                    da_centers = da.from_array(centers_coloured)
-                centers_list.append(da_centers)
-
-                # print(centers.flags.writeable)
-                if num_chunks == num_chunks_total:
-                    # print("Received all data for the timestamp")
-                    event_producer.send(
-                        event_topic_name,
-                        key=b"time_stamp",
-                        value=str(timestamp + 1).encode(),
-                        partition=0,
-                    ).add_errback(on_send_error)
-                    event_producer.flush()
-                    break
-            consumer.commit()
-            centers = da.concatenate(centers_list)
-            centers = da.rechunk(centers, chunks=center_chunk)
-            start = time.time()
-            stats_file = open(f"{img_save_path}/{timestamp}.json", "w+")
-            prediction(
-                centers,
-                zarr_save_path=f"{zarr_save_path}/{timestamp}.zarr",
-                img_save_path=f"{img_save_path}/{timestamp}.png",
-                f=log_file,
-                stats_file=stats_file,
+        num_chunks = 0
+        print(f"Consuming messages for timestamp {str(timestamp)}", flush=True)
+        for message in consumer:
+            num_chunks += 1
+            print(message.key.decode(),num_chunks,num_chunks_total, flush=True)
+            centers_coloured_packed = message.value
+            centers_coloured = msgpack.unpackb(
+                centers_coloured_packed, object_hook=mnp.decode
             )
-            print("Time to predict: ", time.time() - start)
+            
+            
+            if gpu:
+                cpy_centers = cupy.array(centers_coloured)
+                da_centers = da.from_array(centers_coloured,asarray=False)
+                # da_centers = da_centers.map_blocks(cupy.asarray)
+            else:   
+                da_centers = da.from_array(centers_coloured)
+            centers_list.append(da_centers)
+
+            # print(centers.flags.writeable)
+            if num_chunks == num_chunks_total:
+                # print("Received all data for the timestamp")
+                event_producer.send(
+                    event_topic_name,
+                    key=b"time_stamp",
+                    value=str(timestamp + 1).encode(),
+                    partition=0,
+                ).add_errback(on_send_error)
+                event_producer.flush()
+                break
+        consumer.commit()
+        centers = da.concatenate(centers_list)
+        centers = da.rechunk(centers, chunks=center_chunk)
+        start = time.time()
+        stats_file = open(f"{img_save_path}/{timestamp}.json", "w+")
+        prediction(
+            centers,
+            zarr_save_path=f"{zarr_save_path}/{timestamp}.zarr",
+            img_save_path=f"{img_save_path}/{timestamp}.png",
+            stats_file=stats_file,
+        )
+        print("Time to predict: ", time.time() - start)
     r = redis.Redis(host="localhost", port=6379, db=0)
     r.flushdb()
     

@@ -6,27 +6,30 @@ import redis
 from cv_utils import *
 import msgpack
 import msgpack_numpy as mnp
-import argparse
-
-parser = argparse.ArgumentParser(
-    prog="Image Preprocessor",
-    description="Detects centers and their states",
-    epilog="provide instance_id",
-)
-
-parser.add_argument("id")
-args = parser.parse_args()
-instance_id = args.id
-
-
+import time
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+REDIS_DB = int(os.getenv("REDIS_DB", "0"))
+KAFKA_BROKER = os.getenv("KAFKA_BROKER", "localhost:9092")
+PARTITION = int(os.getenv("PARTITION","0"))
+time.sleep(10)
 # To consume latest messages and auto-commit offsets
-consumer = KafkaConsumer(
-    "image-preprocess",
-    group_id="image_preprocess",
-    bootstrap_servers=["localhost:9092"],
-)
-
-producer = KafkaProducer(bootstrap_servers=["localhost:9092"])
+connected = False
+while not connected:
+    try:
+        consumer = KafkaConsumer(
+            group_id="image_preprocess",
+            bootstrap_servers=[KAFKA_BROKER],
+        )
+        consumer.assign([TopicPartition("image-preprocess",PARTITION)])
+        print("Seeked to beginning", flush=True)
+        connected = True
+    except Exception as e:
+        print(e)
+        print("Retrying connecting to kafka",flush=True)
+print("Connected",flush=True)
+time.sleep(5)
+producer = KafkaProducer(bootstrap_servers=[KAFKA_BROKER])
 producer_topic_name = "fire-prediction"
 
 # event_consumer = KafkaConsumer(
@@ -38,7 +41,7 @@ producer_topic_name = "fire-prediction"
 
 def on_send_success(record_metadata):
     print(record_metadata.topic)
-    print(record_metadata.partition)
+    print("partition",record_metadata.partition)
     print(record_metadata.offset)
 
 
@@ -46,21 +49,21 @@ def on_send_error(excp):
     print("I am an errback", exc_info=excp)
 
 
-r = redis.Redis(host="localhost", port=6379, db=0)
+r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB)
 
 
 curr_timestamp = 0
 m, n = 24, 24
 x_dim, y_dim = 256, 256
-print("Consuming messages")
 processed = 0
+print("Consuming messages",flush=True)
 for message in consumer:
     # message value and key are raw bytes -- decode if necessary!
     # e.g., for unicode: `message.value.decode('utf-8')`
     # print ("%s:%d:%d: key=%s value=%s" % (message.topic, message.partition,
     #                                       message.offset, message.key,
     #                                       message.value))
-    print(message.key.decode())
+    print(message.key.decode(),flush=True)
     [_, x, y, time_stamp] = message.key.decode().split("_")
     x = int(x)
     y = int(y)
@@ -95,7 +98,7 @@ for message in consumer:
         producer_topic_name, key=key.encode(), value=centers_color_packed
     ).add_callback(on_send_success).add_errback(on_send_error)
     producer.flush()
-    print(processed)
+    print(processed,flush=True)
 
     # print(message.key.decode(),len(centers))
     # break
