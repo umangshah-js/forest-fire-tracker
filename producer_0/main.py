@@ -46,20 +46,13 @@ for event_message in event_consumer:
         curr_timestamp = int(event_message.value.decode())
         event_consumer.commit()
         break
+
 time.sleep(10)
 print("Beginning",flush=True)
 def main():
     producer = KafkaProducer(bootstrap_servers=[KAFKA_BROKER])
     topic_name = "image-preprocess"
     data_location = SIMULATION_DATA_PATH
-    # with open("../env.json") as f:
-    #     env = json.load(f)
-    #     print(env)
-    #     data_location = env["data_path"]
-    # if data_location == None:
-    #     print("Path not set")
-    #     return 1
-
     timestamp = 0
     for timestamp in range(150):
         for img_file in glob.glob(f"{data_location}/raw/Cam_*/{str(timestamp)}.png"):

@@ -32,12 +32,6 @@ time.sleep(5)
 producer = KafkaProducer(bootstrap_servers=[KAFKA_BROKER])
 producer_topic_name = "fire-prediction"
 
-# event_consumer = KafkaConsumer(
-#                          group_id=f"image_preprocess_1_{str(instance_id)}",
-#                          bootstrap_servers=['localhost:9092'])
-# event_consumer.assign([TopicPartition('wfs-events', 0)])
-# event_consumer.commit()
-
 
 def on_send_success(record_metadata):
     print(record_metadata.topic)
@@ -58,11 +52,6 @@ x_dim, y_dim = 256, 256
 processed = 0
 print("Consuming messages",flush=True)
 for message in consumer:
-    # message value and key are raw bytes -- decode if necessary!
-    # e.g., for unicode: `message.value.decode('utf-8')`
-    # print ("%s:%d:%d: key=%s value=%s" % (message.topic, message.partition,
-    #                                       message.offset, message.key,
-    #                                       message.value))
     print(message.key.decode(),flush=True)
     [_, x, y, time_stamp] = message.key.decode().split("_")
     x = int(x)
@@ -70,7 +59,6 @@ for message in consumer:
     time_stamp = int(time_stamp)
     print(x, y, time_stamp)
     centers = None
-    # print("Fetched from redis: ",r.get(message.key.decode()))
     image_np = np.frombuffer(r.get(message.key.decode()), np.uint8)
     r.delete(message.key.decode())
     img = cv2.imdecode(image_np, cv2.IMREAD_COLOR)
