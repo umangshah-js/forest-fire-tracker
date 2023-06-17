@@ -6,7 +6,6 @@ __pycache__
 *.xz
 data
 *.log
-*.png
 *.ipynb
 venv
 kafka_topic/kafka_2.13-3.4.0
