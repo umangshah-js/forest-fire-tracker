@@ -1,38 +1,37 @@
-# Forest Fire Tracker(Distributed Computing)
+# Forest Fire Tracker (Distributed Computing)
 
 ## Introduction
-This project aims to explore the issue of forest fire in a distributed manner, such that if the data is coming from multitude of cameras spread throughout the forest, how we would process such a large data stream in realtime and predict the rate of spread of fire and determine which part of the forest is most like to burn next.
+The Forest Fire Tracker project aims to address the challenge of forest fires using a distributed computing approach. It focuses on real-time processing of data streams from numerous cameras spread throughout the forest. The primary goal is to predict the rate of fire spread and identify the areas of the forest most susceptible to burning.
 
-You can find the presentation [here](https://docs.google.com/presentation/d/1LLqI5QP5mKQEvh4doRRyyPoVaXjJIV1GimPWcVtWH0M/edit?usp=sharing)
+You can access the project presentation [here](https://docs.google.com/presentation/d/1LLqI5QP5mKQEvh4doRRyyPoVaXjJIV1GimPWcVtWH0M/edit?usp=sharing).
 
 ## Architecture
-The simulation has been taken care by Unity, with image caching by Redis. Image processing has been done with the help of OpenCV in a distributed manner with firewall prediction done in Dask. Coordination between all these process, has been taken care with Kafka streaming services. The final results, has been plotted in a Dashboard, for visualization. Please refer to the following diagram for a better understanding of the architecture 
+The project's architecture utilizes various technologies to achieve its objectives. Unity is employed for simulation purposes, while Redis handles image caching. Image processing is accomplished through distributed OpenCV operations, and Dask is utilized for firewall prediction. Kafka streaming services facilitate coordination among these components. To gain a clearer understanding of the architecture, please refer to the following diagram:
 
-<img title="Architecture" alt="Architecture Diagram" src="assest/img/arch.png">
+![Architecture Diagram](assets/img/arch.png)
 
 ## Simulation
-In order to accurately simulate a large forest, we take a 24*24 grid, each consisting of around 20-30 trees. The simulation has been done with Unity, with each box image size taken to be 256x256, resulting in overall terrain of 6144x6144 pixels. 
+To create an accurate simulation of a large forest, we employ a 24x24 grid, with each grid cell containing approximately 20-30 trees. Unity is used for implementing the simulation, with each box's image size set to 256x256 pixels, resulting in an overall terrain of 6144x6144 pixels.
 
-At a particular timestamp, a tree can be in one of the four states:
-- Alive: Green
-- Heating: Yellow
-- Red: Burning
-- Black: Dead
+At each timestamp, a tree can exist in one of four states:
+- Alive (Green)
+- Heating (Yellow)
+- Burning (Red)
+- Dead (Black)
 
-<!-- Plot two images side by side of one another -->
+<!-- Display two images side by side -->
 <p float="left">
-  <img title="Simulation" alt="Simulation at a particular timestamp" src="assest/img/simulation.png" width="400" />
-  <img title="Simulation splitted into grids" alt="Simulation splitted into grids at a particular timestamp" src="assest/img/split_simulation.png" width="400" />
+  <img title="Simulation at a particular timestamp" alt="Simulation" src="assets/img/simulation.png" width="400" />
+  <img title="Simulation split into grids at a particular timestamp" alt="Simulation split into grids" src="assets/img/split_simulation.png" width="400" />
 </p>
 
 ## Image Processing
-We applied Image Processing algorithms such as contour detection, canny edge detection independtly on each grid i.e. on a 256x256 image to detect the tree contour and accurately determine the position within the grid. The image processing results can be seen below:
+For accurate tree detection and positioning within each grid, we apply independent image processing algorithms, such as contour detection and canny edge detection, to each 256x256 grid cell. This enables us to identify tree contours effectively. The image processing results are depicted below:
 
 <p float="left">
-  <img title="Input Image" alt="Input images" src="assest/img/cv_input.png" width="400" />
-  <img title="Output Image" alt="Ouptut images" src="assest/img/cv_output.png" width="400" />
+  <img title="Input Image" alt="Input images" src="assets/img/cv_input.png" width="400" />
+  <img title="Output Image" alt="Output images" src="assets/img/cv_output.png" width="400" />
 </p>
 
 ## Fire Prediction
-We used Dask to predict the fire spread rate, by taking the input from the Kafka stream and then predicting the fire spread rate by factoring in the distance between the burning trees and taking a exponential of the distance. The results can be seen below:
-
+To predict the rate of fire spread, we utilize Dask to process input from the Kafka stream. By considering the distance between burning trees and applying an exponential function to this distance, we can estimate the fire spread rate. The results are presented below:
