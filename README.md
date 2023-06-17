@@ -1,5 +1,8 @@
 # Forest Fire Tracker (Distributed Computing)
 
+<!-- Add an image here -->
+![Dashboard](assets/img/dashboard.png)
+
 ## Introduction
 The Forest Fire Tracker project aims to address the challenge of forest fires using a distributed computing approach. It focuses on real-time processing of data streams from numerous cameras spread throughout the forest. The primary goal is to predict the rate of fire spread and identify the areas of the forest most susceptible to burning.
 
@@ -34,4 +37,4 @@ For accurate tree detection and positioning within each grid, we apply independe
 </p>
 
 ## Fire Prediction
-To predict the rate of fire spread, we utilize Dask to process input from the Kafka stream. By considering the distance between burning trees and applying an exponential function to this distance, we can estimate the fire spread rate. The results are presented below:
+To predict the rate of fire spread, we utilize Dask to process input from the Kafka stream. By considering the distance between burning trees and applying an exponential function to this distance, we can estimate the fire spread rate. The results are shown at the top if the file.
