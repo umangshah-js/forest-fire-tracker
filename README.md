@@ -1,4 +1,5 @@
 # Forest Fire Tracker (Distributed Computing)
+To run the setup, please use `docker compose up` and then run `run.sh` to start the simulation and `stop.sh` to stop it.
 
 <!-- Add an image here -->
 ![Dashboard](assets/img/dashboard.png)
