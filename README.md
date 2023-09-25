@@ -5,7 +5,7 @@ To run the setup, please use `docker compose up` and then run `run.sh` to start 
 ![Dashboard](assets/img/dashboard.png)
 
 ## Introduction
-The Forest Fire Tracker project aims to address the challenge of forest fires using a distributed computing approach. It focuses on real-time processing of data streams from numerous cameras spread throughout the forest. The primary goal is to predict the rate of fire spread and identify the areas of the forest most susceptible to burning.
+The Forest Fire Tracker project aims to address the challenge of forest fires using a distributed computing approach. It focuses on real-time processing of data streams from numerous satellite cameras spread throughout the forest. The primary goal is to predict the rate of fire spread and identify the areas of the forest most susceptible to burning.
 
 You can access the project presentation [here](https://docs.google.com/presentation/d/1LLqI5QP5mKQEvh4doRRyyPoVaXjJIV1GimPWcVtWH0M/edit?usp=sharing).
 
